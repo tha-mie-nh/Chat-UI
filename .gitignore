@@ -1,0 +1,45 @@
+# Environment files — never commit secrets
+.env
+backend/.env
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# SQLite
+*.db
+*.db-shm
+*.db-wal
+
+# IDE / tool files
+.qwen/
+add-backend-logging.xml
+
+# Root-level Dockerfiles (không dùng)
+/Dockerfile
+/Dockerfile.backend
+/Dockerfile.frontend
+
+# Test compose file
+docker-compose.test-team-be.yaml
