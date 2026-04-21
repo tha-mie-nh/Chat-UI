@@ -83,111 +83,7 @@ async function getGraphData(
   }
 }
 
-// ── [MOCK — disabled] CSV-based graph retrieval ───────────────────────────────
-// import { ALL_NODES, ALL_EDGES } from '../mock/csv-data-loader.js';
-//
-// const ALL_NAMES: string[] = [...new Set(ALL_NODES.map((n: GraphNode) => n.name))];
-//
-// function detectNames(q: string): string[] {
-//   return ALL_NAMES.filter((name) => {
-//     const lower = name.toLowerCase();
-//     const ascii = lower.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd');
-//     return q.includes(lower) || q.includes(ascii);
-//   });
-// }
-//
-// function getGraphDataMock(userMessage: string): { graph: GraphData; totalCount: number; hints: string } {
-//   const q = userMessage.toLowerCase();
-//   const matchedNames = detectNames(q);
-//   const allMatched: GraphNode[] = matchedNames.length > 0
-//     ? ALL_NODES.filter((n: GraphNode) => new Set(matchedNames).has(n.name))
-//     : [];
-//   const totalCount = allMatched.length;
-//   const MAX = 10;
-//   const hints = totalCount > MAX ? diversityHints(allMatched) : '';
-//   const topNodes = totalCount > MAX
-//     ? [...allMatched].sort((a, b) => b.confidence_score - a.confidence_score).slice(0, MAX)
-//     : allMatched;
-//   const nodeIds = new Set(topNodes.map((n: GraphNode) => n.id));
-//   const edges = ALL_EDGES.filter((e: { from: string; to: string }) => nodeIds.has(e.from) && nodeIds.has(e.to));
-//   return { graph: { nodes: topNodes, edges }, totalCount, hints };
-// }
-// ── [END MOCK] ────────────────────────────────────────────────────────────────
 
-// ── [MOCK — disabled] Image appearance analysis ───────────────────────────────
-// analyzeImage(), normalizeAppearance(), filterByAppearance() removed.
-// Image is now forwarded directly to AGENT_URL as base64 in the payload.
-// ── [END MOCK] ────────────────────────────────────────────────────────────────
-
-// ── [DEPRECATED — GraphData flow, kept for rollback] ─────────────────────────
-// const MAX_NODES_TO_GEMINI = 10;
-//
-// /** Count distinct values per attribute — used for narrowing suggestions. */
-// function diversityHints(nodes: GraphNode[]): string {
-//   if (nodes.length <= 1) return '';
-//   const attrs: Array<{ label: string; get: (n: GraphNode) => string }> = [
-//     { label: 'thành phố',            get: (n) => n.city },
-//     { label: 'nghề nghiệp',          get: (n) => n.job },
-//     { label: 'độ tuổi',              get: (n) => n.appearance?.age_range ?? '' },
-//     { label: 'giới tính',            get: (n) => n.gender },
-//     { label: 'học vấn',              get: (n) => n.education },
-//     { label: 'tình trạng hôn nhân',  get: (n) => n.marital_status },
-//     { label: 'thu nhập',             get: (n) => n.income_level },
-//     { label: 'tỉnh/thành',           get: (n) => n.province },
-//   ];
-//   const ranked = attrs
-//     .map((a) => {
-//       const counts: Record<string, number> = {};
-//       nodes.forEach((n) => { const v = a.get(n); if (v) counts[v] = (counts[v] ?? 0) + 1; });
-//       const uniq = Object.entries(counts).sort((x, y) => y[1] - x[1]);
-//       return { label: a.label, uniq, count: uniq.length };
-//     })
-//     .filter((a) => a.count >= 2)
-//     .sort((a, b) => b.count - a.count)
-//     .slice(0, 2);
-//   if (ranked.length === 0) return '';
-//   return ranked.map((a) => {
-//     const vals = a.uniq.map(([v, c]) => `${v} (${c})`).join(', ');
-//     return `- Theo ${a.label}: ${vals}`;
-//   }).join('\n');
-// }
-//
-// function buildSystemInstruction(graph: GraphData, totalCount = 0, hints = ''): string {
-//   const isLarge = totalCount > MAX_NODES_TO_GEMINI;
-//   const largeRule = isLarge ? `
-// KẾT QUẢ: tổng ${totalCount} người khớp — đang hiển thị ${graph.nodes.length} người tiêu biểu.
-// QUY TẮC: liệt kê ${graph.nodes.length} người này, thông báo "Tìm thấy ${totalCount} người, hiển thị ${graph.nodes.length} tiêu biểu", gợi ý thu hẹp:
-// ${hints}` : '';
-//
-//   return `Bạn là trợ lý tra cứu thông tin nhân khẩu học từ dữ liệu graph.
-//
-// NHIỆM VỤ:
-// - Phân tích dữ liệu graph (nodes = thông tin người, edges = quan hệ: vợ chồng/anh em/đồng nghiệp/bạn bè/họ hàng)
-// - Dựa vào lịch sử hội thoại để hiểu ngữ cảnh, hội tụ kết quả khi user thêm điều kiện
-// - Trả lời bằng tiếng Việt tự nhiên, ngắn gọn, có cấu trúc rõ ràng
-// ${largeRule}
-// QUY TẮC BẮT BUỘC:
-// - KHÔNG bịa thêm thông tin ngoài dữ liệu graph
-// - Nếu ≤ ${MAX_NODES_TO_GEMINI} kết quả: liệt kê đầy đủ, hỏi user muốn xem chi tiết ai
-// - Nếu user thêm điều kiện: dùng lịch sử hội thoại để hội tụ vào đúng đối tượng
-// - Nếu không tìm thấy: trả lời thẳng "Không tìm thấy thông tin phù hợp trong dữ liệu"
-// - Khi nêu quan hệ: nêu rõ loại quan hệ và thông tin cả hai bên
-// - Nếu graph rỗng (nodes = []): hỏi user muốn tìm ai cụ thể
-//
-// DỮ LIỆU GRAPH:
-// \`\`\`json
-// ${JSON.stringify(graph, null, 2)}
-// \`\`\``;
-// }
-// ── [END DEPRECATED] ─────────────────────────────────────────────────────────
-
-// ── System instruction for relation query (relation: true) ──
-
-/**
- * Builds system instruction for AgentRelationBlock[] format.
- * Used when agent returns entity pairs connected by graph edges.
- * Example query: "Tìm thông tin về công ty NCS có liên quan đến ông Vũ Ngọc Sơn"
- */
 function buildRelationSystemInstruction(
   blocks: AgentRelationBlock[],
   userQuery: string
@@ -287,7 +183,7 @@ export async function interpretGraph(
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          query: userMessage,
+          query: userMessage, 
           image: imageData?.base64 ?? null,
           conversationId,
           history: history.map((h) => ({ role: h.role, content: h.content })),
@@ -295,8 +191,11 @@ export async function interpretGraph(
         signal: controller.signal,
       });
       if (!res.ok) throw new Error(`Agent returned HTTP ${res.status}`);
-      const data: unknown = await res.json();
-      return typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+      // const data: unknown = await res.json();
+      // return typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+      const raw = await res.json() as { data?: unknown };
+      const payload = raw.data ?? raw;
+      return typeof payload === 'string' ? payload : JSON.stringify(payload, null, 2);
     } finally {
       clearTimeout(timeout);
     }
@@ -349,3 +248,41 @@ export async function interpretGraph(
   // ... Gemini call
   // ── [END DEPRECATED] ────────────────────────────────────────────────────────
 }
+
+
+
+
+
+
+// interpretGraph(userText, history, convId)
+//   │
+//   ├─ [Nếu không có GEMINI_API_KEY]
+//   │    → gọi AGENT_URL trực tiếp → trả raw JSON (bypass Gemini)
+//   │
+//   └─ [Có GEMINI_API_KEY]
+//        │
+//        ├─ getGraphData() → POST AGENT_URL
+//        │    payload: { query, image, conversationId, history[] }
+//        │    timeout: 30s
+//        │    trả về: AgentResponse { data: { candidates[], relation: bool } }
+//        │
+//        ├─ Nếu relation: true  → buildRelationSystemInstruction()
+//        │    (user hỏi về mối quan hệ giữa 2 entities)
+//        │
+//        ├─ Nếu relation: false → buildSingleEntitySystemInstruction()
+//        │    (user tìm 1 entity đơn lẻ)
+//        │
+//        └─ Gọi Gemini gemini-2.5-flash với systemInstruction + history
+//             Retry tối đa 3 lần nếu lỗi 503
+//             Trả về text response
+//
+
+// AgentResponse mẫu (relation: false):
+// {
+//   "data": {
+//     "relation": false,
+//     "candidates": [
+//       { "id", "name", "label", "text", "properties": {...} }
+//     ]
+//   }
+// }
