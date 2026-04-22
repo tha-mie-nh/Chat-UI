@@ -27,12 +27,24 @@ services:
       MINIO_SECRET_KEY: minioadmin123
       MINIO_BUCKET: chatbot-uploads
       MINIO_PUBLIC_URL: http://localhost:9000/chatbot-uploads
-      AGENT_URL: ${AGENT_URL}   # required — trỏ vào real agent
+      AGENT_URL: http://mock-agent:4003   # trỏ vào mock agent
     depends_on:
       mongodb:
         condition: service_healthy
       minio:
         condition: service_healthy
+      mock-agent:
+        condition: service_started
+    restart: unless-stopped
+
+  mock-agent:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./backend:/app
+    command: sh -c "npm install --silent && npx tsx src/mock/mock-agent-text-server.ts"
+    ports:
+      - "4003:4003"
     restart: unless-stopped
 
   mongodb:
