@@ -7,7 +7,7 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     proxy: {
-      '/api': 'http://chat-backend:3001',
+      '/api': `http://${process.env.BACKEND_HOST ?? 'localhost:3001'}`,
     },
   },
   build: {

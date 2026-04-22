@@ -38,7 +38,7 @@ export function useChat(conversationId: string | null, options: UseChatOptions =
   );
 
   const runStream = useCallback(
-    async (history: Message[], assistantId: string) => {
+    async (history: Message[], assistantId: string, retryCount = 0) => {
       const convId = conversationIdRef.current;
       if (!convId) return;
 
@@ -62,6 +62,17 @@ export function useChat(conversationId: string | null, options: UseChatOptions =
         }
       } catch (err) {
         if ((err as Error).name === 'AbortError') return;
+
+        // Auto-retry 1 lần: reset content rỗng rồi thử lại
+        if (retryCount < 1) {
+          console.warn('[useChat] Stream error, retrying...', err);
+          updateMessages((prev) =>
+            prev.map((m) => (m.id === assistantId ? { ...m, content: '' } : m))
+          );
+          await runStream(history, assistantId, retryCount + 1);
+          return;
+        }
+
         const msg = err instanceof Error ? err.message : 'Unknown error';
         setError(msg);
         updateMessages((prev) => prev.filter((m) => m.id !== assistantId));
