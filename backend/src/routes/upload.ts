@@ -1,3 +1,14 @@
+// POST /api/upload
+//   form-data: file (image/*)
+//   giới hạn: 10 MB, chỉ nhận image/*
+
+// → uploadFile() → storage-client.ts → MinIO/S3
+// → trả { url } (public URL để FE hiển thị ảnh)
+
+
+
+
+
 import { Hono } from 'hono';
 import { uploadFile } from '../lib/storage-client.js';
 

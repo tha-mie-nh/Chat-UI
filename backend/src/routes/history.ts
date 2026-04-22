@@ -1,3 +1,14 @@
+// dùng để lấy lịch sử tin nhắn của một conversation,
+//  phục vụ cho backend agent (như cron job hoặc worker)
+//  có thể truy cập mà không cần qua frontend.
+//  Endpoint này yêu cầu header X-Internal-Key để đảm bảo chỉ các agent tin cậy mới có thể truy cập được, 
+// tránh lộ thông tin nhạy cảm nếu endpoint bị gọi từ bên ngoài.
+//  Agent có thể lấy metadata của conversation (như title) và danh sách tin nhắn với phân trang và lọc theo role (user/assistant).
+
+
+
+
+
 import { Hono } from 'hono';
 import { Conversation, Message } from '../db.js';
 

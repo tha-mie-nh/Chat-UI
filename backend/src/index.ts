@@ -9,6 +9,15 @@ import chatRouter from './routes/chat.js';
 import uploadRouter from './routes/upload.js';
 import historyRouter from './routes/history.js';
 
+// ── Backend API Server ─────────────────────────────────────────────────────────
+// là một entry point , tập trung vào việc khởi động server
+// khởi động server, kết nối DB, thiết lập các route và middleware
+// middleware kiểm tra DB trước khi vào route, trả 503 nếu DB chưa sẵn sàng
+
+
+
+
+
 const app = new Hono();
 
 const port = Number(process.env.PORT ?? 3001);

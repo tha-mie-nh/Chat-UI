@@ -85,6 +85,15 @@ services:
       "
     restart: on-failure
 
+  mock-agent:
+    image: node:20-alpine
+    volumes:
+      - /tmp/mock-agent.js:/app/mock-agent.js
+    command: node /app/mock-agent.js
+    ports:
+      - "9999:9999"
+    restart: unless-stopped
+
 volumes:
   mongodb_data:
   minio_data:

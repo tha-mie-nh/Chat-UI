@@ -47,3 +47,14 @@ export async function uploadFile(
 
   return `${publicBase}/${key}`;
 }
+
+
+
+
+// Dùng AWS SDK S3Client trỏ đến MinIO (dev) hoặc S3 thật (prod).
+// uploadFile():
+//   - Tạo key ngẫu nhiên: {UUID}.{ext}
+//   - PutObject lên bucket
+//   - Trả về publicBase/key (URL public để browser load ảnh)
+
+// Swap sang S3 thật: đổi env vars, bỏ forcePathStyle

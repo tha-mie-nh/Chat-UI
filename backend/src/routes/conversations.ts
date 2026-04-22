@@ -1,9 +1,13 @@
+
+// CRUD hội thoại (conversation) và tin nhắn (message)
+
 import { Hono } from 'hono';
 import { Conversation, Message } from '../db.js';
 
 const router = new Hono();
 
 /** GET /api/conversations — list all, ordered by latest activity */
+// Lấy danh sách, sort theo updatedAt mới nhất
 router.get('/', async (c) => {
   const convs = await Conversation.find().sort({ updatedAt: -1 }).lean();
   return c.json(convs.map((d) => ({
@@ -15,12 +19,14 @@ router.get('/', async (c) => {
 });
 
 /** POST /api/conversations — create empty conversation */
+//Tạo conversation rỗng, title mặc định "New conversation"
 router.post('/', async (c) => {
   const conv = await Conversation.create({});
   return c.json({ id: conv._id, title: conv.title, created_at: conv.createdAt, updated_at: conv.updatedAt }, 201);
 });
 
 /** GET /api/conversations/:id — get conversation with messages */
+//Lấy conversation + toàn bộ messages, sort theo createdAt
 router.get('/:id', async (c) => {
   const id = c.req.param('id');
   const conv = await Conversation.findById(id).lean();
@@ -37,6 +43,7 @@ router.get('/:id', async (c) => {
 });
 
 /** DELETE /api/conversations/:id */
+//Xóa conversation + xóa tất cả messages 
 router.delete('/:id', async (c) => {
   const id = c.req.param('id');
   await Promise.all([
