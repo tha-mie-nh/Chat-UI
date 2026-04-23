@@ -2,7 +2,7 @@
 
 import { Hono } from 'hono';
 import { Conversation, Message } from '../db.js';
-import { interpretGraph, interpretGraphStream, type HistoryItem } from '../services/graph-interpreter.js';
+import { createAgentStream, type HistoryItem } from '../services/graph-interpreter.js';
 
 const router = new Hono();
 
@@ -50,23 +50,32 @@ router.post('/:id/chat', async (c) => {
     content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
   }));
 
-  // ── Streaming mode: pipe agent chunks → SSE → FE ─────────────────────────
-  const streamMode = c.req.query('stream') === 'true';
-  if (streamMode) {
-    const encoder = new TextEncoder();
-    const title = conv.title;
+  // ── Gọi agent, auto-detect streaming từ Content-Type ─────────────────────
+  let agentStream: Awaited<ReturnType<typeof createAgentStream>>;
+  try {
+    agentStream = await createAgentStream(userText, history, convId);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[chat] Agent error:', msg);
+    return c.json({ error: 'Agent error', detail: msg }, 502);
+  }
 
+  const { isStreaming, chunks } = agentStream;
+  const title = conv.title;
+
+  if (isStreaming) {
+    // Agent stream (text/plain, SSE) → pipe chunks → SSE → FE
+    const encoder = new TextEncoder();
     const readableStream = new ReadableStream({
       async start(controller) {
         let fullAnswer = '';
         try {
-          for await (const chunk of interpretGraphStream(userText, history, convId)) {
+          for await (const chunk of chunks) {
             fullAnswer += chunk;
             controller.enqueue(
               encoder.encode(`data: ${JSON.stringify({ type: 'chunk', content: chunk })}\n\n`)
             );
           }
-          // Lưu DB sau khi stream xong
           await Message.create({ conversationId: convId, role: 'assistant', content: fullAnswer, createdAt: now + 1 });
           controller.enqueue(
             encoder.encode(`data: ${JSON.stringify({ type: 'done', title })}\n\n`)
@@ -82,7 +91,6 @@ router.post('/:id/chat', async (c) => {
         }
       },
     });
-
     return new Response(readableStream, {
       headers: {
         'Content-Type': 'text/event-stream',
@@ -92,18 +100,18 @@ router.post('/:id/chat', async (c) => {
     });
   }
 
-  // ── Non-streaming mode ────────────────────────────────────────────────────
-  let answer: string;
+  // Agent trả JSON 1 cục → tích lũy → trả JSON về FE
+  let answer = '';
   try {
-    answer = await interpretGraph(userText, history, convId);
+    for await (const chunk of chunks) answer += chunk;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error('[interpretGraph] Error:', msg);
-    return c.json({ error: 'Graph interpreter error', detail: msg }, 502);
+    console.error('[chat json] Error:', msg);
+    return c.json({ error: 'Agent error', detail: msg }, 502);
   }
 
   await Message.create({ conversationId: convId, role: 'assistant', content: answer, createdAt: now + 1 });
-  return c.json({ role: 'assistant', content: answer, title: conv.title });
+  return c.json({ role: 'assistant', content: answer, title });
 });
 
 export default router;

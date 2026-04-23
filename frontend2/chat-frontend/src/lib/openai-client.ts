@@ -13,7 +13,7 @@ export async function* streamChatCompletion(
   onMeta?: (meta: { title: string }) => void
 ): AsyncGenerator<string> {
   const response = await fetch(
-    `${apiBase}/conversations/${conversationId}/chat?stream=true`,
+    `${apiBase}/conversations/${conversationId}/chat`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

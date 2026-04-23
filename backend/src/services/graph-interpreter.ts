@@ -116,56 +116,59 @@ async function* parseJsonOrLines(body: ReadableStream<Uint8Array>): AsyncGenerat
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
+export interface AgentStream {
+  /** true nếu agent stream (text/plain, SSE); false nếu JSON 1 cục */
+  isStreaming: boolean;
+  chunks: AsyncGenerator<string>;
+}
+
 /**
- * Stream agent response as text chunks.
- * Auto-detects format from Content-Type header.
+ * Gọi agent, trả { isStreaming, chunks }.
+ * isStreaming dựa vào Content-Type header của agent response:
+ *   application/json → false (trả 1 cục)
+ *   text/plain, text/event-stream → true (stream)
  */
-export async function* interpretGraphStream(
+export async function createAgentStream(
   userMessage: string,
   history: HistoryItem[],
   conversationId: string,
   imageData?: ImageData
-): AsyncGenerator<string> {
+): Promise<AgentStream> {
   const agentUrl = process.env.AGENT_URL;
   if (!agentUrl) throw new Error('AGENT_URL chưa được cấu hình. Set AGENT_URL trong .env');
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 60_000);
 
+  let res: Response;
   try {
-    const res = await fetch(agentUrl, {
+    res = await fetch(agentUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: buildPayload(userMessage, conversationId, history, imageData?.base64),
       signal: controller.signal,
     });
-
-    if (!res.ok) throw new Error(`Agent returned HTTP ${res.status}`);
-    if (!res.body) throw new Error('Agent returned empty body');
-
-    const ct = res.headers.get('Content-Type') ?? '';
-    if (ct.includes('text/event-stream')) {
-      yield* parseSse(res.body);
-    } else if (ct.includes('application/json') || ct.includes('ndjson')) {
-      yield* parseJsonOrLines(res.body);
-    } else {
-      yield* readRawText(res.body); // text/plain or unknown
-    }
-  } finally {
+  } catch (err) {
     clearTimeout(timeout);
+    throw err;
   }
-}
 
-/** Non-streaming: accumulate full text from stream. */
-export async function interpretGraph(
-  userMessage: string,
-  history: HistoryItem[],
-  conversationId: string,
-  imageData?: ImageData
-): Promise<string> {
-  let full = '';
-  for await (const chunk of interpretGraphStream(userMessage, history, conversationId, imageData)) {
-    full += chunk;
+  if (!res.ok)   { clearTimeout(timeout); throw new Error(`Agent returned HTTP ${res.status}`); }
+  if (!res.body) { clearTimeout(timeout); throw new Error('Agent returned empty body'); }
+
+  const ct = res.headers.get('Content-Type') ?? '';
+  const isJson = ct.includes('application/json') || ct.includes('ndjson');
+  const isStreaming = !isJson;
+
+  async function* generate(): AsyncGenerator<string> {
+    try {
+      if (ct.includes('text/event-stream'))   yield* parseSse(res.body!);
+      else if (isJson)                         yield* parseJsonOrLines(res.body!);
+      else                                     yield* readRawText(res.body!);
+    } finally {
+      clearTimeout(timeout);
+    }
   }
-  return full;
+
+  return { isStreaming, chunks: generate() };
 }
