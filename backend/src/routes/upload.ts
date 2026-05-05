@@ -38,13 +38,15 @@ router.post('/', async (c) => {
     return c.json({ error: 'File too large — max 10 MB' }, 400);
   }
 
+  console.log(`[upload] received: ${file.name} ${(file.size / 1024).toFixed(1)}KB ${file.type}`);
   try {
     const buffer = Buffer.from(await file.arrayBuffer());
     const url = await uploadFile(buffer, file.name || 'upload', file.type);
+    console.log(`[upload] ✓ stored → ${url}`);
     return c.json({ url });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error('[Upload] Storage error:', msg);
+    console.error('[upload] ✗ storage error:', msg);
     return c.json({ error: 'Upload failed', detail: msg }, 502);
   }
 });

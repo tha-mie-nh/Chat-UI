@@ -1,9 +1,12 @@
 import 'dotenv/config';
+import { mkdir } from 'node:fs/promises';
 import { serve } from '@hono/node-server';
+import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import mongoose from 'mongoose';
 import { connectDB } from './db.js';
+import { UPLOADS_DIR } from './lib/storage-client.js';
 import conversationsRouter from './routes/conversations.js';
 import chatRouter from './routes/chat.js';
 import uploadRouter from './routes/upload.js';
@@ -34,6 +37,10 @@ mongoose.connection.on('disconnected', () => {
 // Allow all origins — no CORS restriction
 app.use('*', cors());
 
+// Serve uploaded images — /uploads/YYYY-MM-DD/uuid.ext → UPLOADS_DIR/...
+app.use('/uploads/*', serveStatic({ root: process.env.UPLOADS_DIR ?? './uploads',
+  rewriteRequestPath: (p) => p.replace('/uploads', '') }));
+
 // Health check — always available even when DB is down
 app.get('/health', (c) => c.json({ ok: true, db: dbReady }));
 
@@ -58,6 +65,9 @@ app.route('/api/upload', uploadRouter);
 // ── Startup ───────────────────────────────────────────────────────────────────
 
 async function startServer() {
+  await mkdir(UPLOADS_DIR, { recursive: true });
+  console.log(`[uploads] storage dir ready: ${UPLOADS_DIR}`);
+
   try {
     await connectDB();
     dbReady = true;

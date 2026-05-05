@@ -5,17 +5,16 @@
 //   text/plain / *    → raw text chunks (default)
 
 export interface HistoryItem { role: 'user' | 'assistant'; content: string; }
-export interface ImageData   { base64: string; mimeType: string; }
 
 function buildPayload(
   userMessage: string,
   conversationId: string,
   history: HistoryItem[],
-  imageBase64?: string
+  imageDataUrl?: string  // "data:image/png;base64,..." or undefined
 ): string {
   return JSON.stringify({
     query:          userMessage,
-    image:          imageBase64 ?? null,
+    image:          imageDataUrl ?? null,
     conversationId,
     history:        history.map((h) => ({ role: h.role, content: h.content })),
   });
@@ -132,7 +131,7 @@ export async function createAgentStream(
   userMessage: string,
   history: HistoryItem[],
   conversationId: string,
-  imageData?: ImageData
+  imageDataUrl?: string  // "data:image/png;base64,..."
 ): Promise<AgentStream> {
   const agentUrl = process.env.AGENT_URL;
   if (!agentUrl) throw new Error('AGENT_URL chưa được cấu hình. Set AGENT_URL trong .env');
@@ -145,7 +144,7 @@ export async function createAgentStream(
     res = await fetch(agentUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: buildPayload(userMessage, conversationId, history, imageData?.base64),
+      body: buildPayload(userMessage, conversationId, history, imageDataUrl),
       signal: controller.signal,
     });
   } catch (err) {

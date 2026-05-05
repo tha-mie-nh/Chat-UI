@@ -43,3 +43,6 @@ add-backend-logging.xml
 
 # Test compose file
 docker-compose.test-team-be.yaml
+
+# Uploaded files — local storage, không commit
+backend/uploads/

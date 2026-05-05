@@ -1,207 +1,190 @@
 # Agent Integration Guide
 
-Tài liệu này mô tả cách tích hợp FastAPI Agent vào hệ thống ChatUI backend.
+Tài liệu dành cho team phát triển agent backend. Mô tả cách hệ thống chat gọi agent và format dữ liệu cần hỗ trợ.
 
 ---
 
-## Tổng quan luồng
+## Tổng quan
 
 ```
-FE (React) → Hono BE → FastAPI Agent → stream text → BE → SSE → FE
+User gửi tin → BE (Hono) → POST AGENT_URL → Agent xử lý → response → BE stream về FE
 ```
 
-BE gọi Agent qua HTTP POST mỗi khi user gửi tin nhắn.
-Agent xử lý query (LLM, graph lookup, v.v.) và stream kết quả về BE dưới dạng plain text.
-BE pipe từng chunk thành SSE events gửi về FE để hiển thị từng chữ như ChatGPT.
+BE gọi agent mỗi khi user gửi tin nhắn (text, ảnh, hoặc cả hai). Agent xử lý và trả kết quả. BE nhận và stream về FE.
 
 ---
 
-## 1. Cấu hình
+## Endpoint
 
-BE đọc địa chỉ Agent từ env var:
+Agent expose 1 HTTP POST endpoint duy nhất:
 
-```env
-AGENT_URL=http://<agent-host>:<port>/<endpoint>
+```
+POST {AGENT_URL}
+Content-Type: application/json
 ```
 
-Ví dụ: `AGENT_URL=http://localhost:8000/query`
+`AGENT_URL` do team agent cung cấp, BE set vào env.
 
 ---
 
-## 2. Request từ BE gửi lên Agent
+## Request Format
 
-**Method:** `POST`  
-**Content-Type:** `application/json`
+BE luôn gửi cùng 1 JSON schema cho cả 3 loại tin nhắn:
 
 ```json
 {
-  "query": "nguyễn văn a có quan hệ với ai?",
-  "image": null,
-  "conversationId": "6634ab12c9e1234567890abc",
+  "query": "câu hỏi của user",
+  "image": "data:image/png;base64,iVBORw0KGgo...",
+  "conversationId": "abc-123-def-456",
   "history": [
-    { "role": "user",      "content": "xin chào" },
-    { "role": "assistant", "content": "Xin chào! Tôi có thể giúp gì?" },
-    { "role": "user",      "content": "tìm người tên nguyễn văn a" }
+    { "role": "user",      "content": "tin nhắn trước" },
+    { "role": "assistant", "content": "trả lời trước"  }
   ]
 }
 ```
 
-| Field | Type | Mô tả |
-|-------|------|-------|
-| `query` | string | Câu hỏi hiện tại của user |
-| `image` | string \| null | Base64 ảnh nếu user gửi ảnh, thường là `null` |
-| `conversationId` | string | ID cuộc hội thoại (MongoDB ObjectId) |
-| `history` | array | Tối đa 20 messages gần nhất, không bao gồm `query` hiện tại |
+### Giải thích từng field
+
+| Field | Type | Bắt buộc | Mô tả |
+|---|---|---|---|
+| `query` | `string` | ✅ | Câu hỏi user. Rỗng `""` nếu user chỉ gửi ảnh |
+| `image` | `string \| null` | ✅ | Data URL ảnh. `null` nếu không có ảnh |
+| `conversationId` | `string` | ✅ | MongoDB UUID của cuộc hội thoại |
+| `history` | `array` | ✅ | Lịch sử chat, tối đa 20 tin gần nhất, từ cũ đến mới |
+
+### 3 luồng cụ thể
+
+**Text only** — user gõ chữ, không có ảnh:
+```json
+{ "query": "Nguyễn Văn A là ai?", "image": null, "conversationId": "abc-123", "history": [] }
+```
+
+**Image only** — user gửi ảnh, không gõ gì:
+```json
+{ "query": "", "image": "data:image/jpeg;base64,/9j/4AAQ...", "conversationId": "abc-123", "history": [] }
+```
+
+**Image + text** — user gửi ảnh kèm câu hỏi:
+```json
+{ "query": "Người này đang làm gì?", "image": "data:image/png;base64,iVBORw0...", "conversationId": "abc-123", "history": [] }
+```
+
+Agent phân biệt 3 luồng qua:
+- `image = null` → text only
+- `image != null, query = ""` → image only
+- `image != null, query != ""` → image + text
+
+### Về field `image` — Data URL
+
+`image` là **data URL**, chuỗi base64 kèm loại file:
+
+```
+"data:image/png;base64,iVBORw0KGgo..."
+  │    │          │      └── nội dung ảnh mã hóa base64
+  │    │          └───────── encoding
+  │    └──────────────────── MIME type (png/jpeg/webp...)
+  └───────────────────────── prefix
+```
+
+Decode trong Python:
+```python
+data_url = payload["image"]           # "data:image/png;base64,..."
+header, encoded = data_url.split(",", 1)
+mime_type = header.split(":")[1].split(";")[0]   # "image/png"
+image_bytes = base64.b64decode(encoded)
+```
 
 ---
 
-## 3. Response Agent cần trả về
+## Response Format
 
-### ✅ Recommended — Stream plain text
+Agent trả **1 trong 3 format** — BE tự detect qua `Content-Type` header, không cần config.
 
-Agent stream từng đoạn text nhỏ theo thời gian. BE tự pipe về FE.
+### Option 1: Plain text streaming ✅ Khuyến nghị
 
 ```
 HTTP 200
 Content-Type: text/plain
 
-<stream các chunk text>
+Nguyễn Văn A là Giám đốc...
 ```
 
-**FastAPI implementation:**
-
+FastAPI example:
 ```python
-from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
-from typing import Optional
 
-app = FastAPI()
-
-class QueryRequest(BaseModel):
-    query: str
-    image: Optional[str] = None
-    conversationId: str
-    history: list[dict] = []
-
-@app.post("/query")
-async def handle_query(body: QueryRequest):
+@app.post("/")
+async def handle(body: QueryRequest):
     async def generate():
-        # Gọi LLM hoặc graph logic của bạn
-        async for chunk in your_llm.astream(body.query, history=body.history):
-            yield chunk  # yield từng phần nhỏ của text
-
+        async for chunk in your_llm.astream(body.query):
+            yield chunk
     return StreamingResponse(generate(), media_type="text/plain")
 ```
 
-**Nếu LLM không hỗ trợ streaming**, fake bằng cách split sau khi có full response:
-
-```python
-import asyncio
-
-@app.post("/query")
-async def handle_query(body: QueryRequest):
-    async def generate():
-        full_text = await your_llm.complete(body.query)
-        for word in full_text.split(" "):
-            yield word + " "
-            await asyncio.sleep(0.05)  # 50ms/word
-
-    return StreamingResponse(generate(), media_type="text/plain")
-```
-
----
-
-### Các format khác BE cũng hỗ trợ
-
-**SSE format** — nếu agent đã có SSE pipeline:
+### Option 2: SSE streaming
 
 ```
 HTTP 200
 Content-Type: text/event-stream
 
-data: {"content": "Nguyễn "}\n\n
-data: {"content": "Văn A "}\n\n
+data: Nguyễn Văn A\n\n
+data: là Giám đốc\n\n
 data: [DONE]\n\n
 ```
 
-BE tự extract field `content` (hoặc `data`, `text`, `chunk`).
+Hoặc SSE với JSON object (BE extract field `content`, `data`, `text`, hoặc `chunk`):
+```
+data: {"content": "Nguyễn Văn A"}\n\n
+data: {"content": " là Giám đốc"}\n\n
+data: [DONE]\n\n
+```
 
-**Full JSON** — không có streaming effect, text xuất hiện 1 cục:
+### Option 3: JSON 1 cục (không có streaming effect)
 
-```json
+```
 HTTP 200
 Content-Type: application/json
 
-{ "data": "Nguyễn Văn A là Giám đốc..." }
+{ "data": "Nguyễn Văn A là Giám đốc Công ty ABC..." }
 ```
 
-BE hỗ trợ field: `data`, `content`, hoặc `text`.
+BE chấp nhận field: `data`, `content`, hoặc `text`.
 
 ---
 
-## 4. Yêu cầu kỹ thuật
+## Pydantic Schema tham khảo
 
-| Yêu cầu | Chi tiết |
-|---------|---------|
-| Timeout | BE đợi tối đa **60 giây** |
-| Error | Trả HTTP status ≠ 200 → BE báo lỗi 502 về FE |
-| CORS | **Không cần** — BE gọi agent server-to-server |
-| Auth | Không có hiện tại |
-| Encoding | UTF-8 cho tiếng Việt |
+```python
+from pydantic import BaseModel
+from typing import Optional
+
+class HistoryItem(BaseModel):
+    role: str      # "user" | "assistant"
+    content: str
+
+class QueryRequest(BaseModel):
+    query: str
+    image: Optional[str] = None   # data URL hoặc null
+    conversationId: str
+    history: list[HistoryItem] = []
+```
 
 ---
 
-## 5. Test tích hợp
+## Lưu ý
 
-Sau khi deploy agent, set `AGENT_URL` và test bằng curl:
-
-```bash
-# Set env và restart BE
-AGENT_URL=http://<agent-host>:<port>/query npm run dev
-
-# Test qua BE (thay <conv-id> bằng ID thật từ GET /api/conversations)
-curl -N -X POST "http://localhost:3001/api/conversations/<conv-id>/chat?stream=true" \
-  -H 'Content-Type: application/json' \
-  -d '{"messages":[{"role":"user","content":"tìm nguyễn văn a"}]}'
-```
-
-**Kết quả mong đợi** — thấy SSE events xuất hiện lần lượt:
-
-```
-data: {"type":"chunk","content":"Nguyễn"}
-data: {"type":"chunk","content":" Văn"}
-data: {"type":"chunk","content":" A"}
-...
-data: {"type":"done","title":"tìm nguyễn văn a"}
-```
-
-Nếu thấy events xuất hiện dần dần → tích hợp thành công.
+- **Timeout:** BE abort sau **60 giây** nếu không có response
+- **HTTP status:** Trả `200` khi thành công. Status khác → BE báo lỗi về FE
+- **Image size:** Ảnh đã validate tối đa 10MB trước khi BE gọi agent
+- **`history`:** Thứ tự từ cũ đến mới, tối đa 20 items
 
 ---
 
-## 6. Test trực tiếp agent (không qua BE)
+## Checklist tích hợp
 
-```bash
-curl -N -X POST http://<agent-host>:<port>/query \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "query": "tìm nguyễn văn a",
-    "image": null,
-    "conversationId": "test-123",
-    "history": []
-  }'
-```
-
-Nếu thấy text stream ra từng phần → agent đã đúng format.
-
----
-
-## 7. Lỗi thường gặp
-
-| Lỗi | Nguyên nhân | Fix |
-|-----|-------------|-----|
-| `502 Graph interpreter error` | Agent không chạy hoặc sai URL | Kiểm tra `AGENT_URL` và agent đang listen |
-| Text xuất hiện 1 cục | Agent trả 1 chunk duy nhất | Agent cần `yield` nhiều chunk nhỏ |
-| Timeout sau 60s | Agent xử lý quá lâu | Tối ưu pipeline hoặc tăng timeout trong `graph-interpreter.ts` |
-| Encoding lỗi tiếng Việt | Thiếu charset | Thêm `charset=utf-8` vào `Content-Type` |
+- [ ] Expose HTTP POST endpoint, cung cấp URL cho team BE
+- [ ] Parse JSON body theo schema trên (dùng Pydantic schema tham khảo)
+- [ ] Xử lý cả 3 luồng: `image=null`, `query=""`, hoặc cả hai có giá trị
+- [ ] Trả response đúng 1 trong 3 format, kèm đúng `Content-Type` header
+- [ ] Đảm bảo response bắt đầu trong vòng 60 giây
+- [ ] Confirm format response với team BE trước khi deploy
