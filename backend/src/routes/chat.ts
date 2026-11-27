@@ -4,7 +4,7 @@ import { Hono } from 'hono';
 import { Conversation, Message } from '../db.js';
 import { createAgentStream, type HistoryItem } from '../services/graph-interpreter.js';
 
-/** Download ảnh từ MinIO URL → data URL "data:image/png;base64,..." */
+/** Download ảnh từ URL ảnh do BE phục vụ (/uploads/...) → data URL "data:image/png;base64,..." */
 async function fetchImageAsDataUrl(url: string): Promise<string> {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Cannot fetch image: HTTP ${res.status}`);

@@ -8,7 +8,7 @@ export interface PendingUpload {
   preview: string; // base64 data URL for immediate display
   status: 'uploading' | 'done' | 'error';
   error?: string;
-  uploadedUrl?: string; // MinIO URL once done
+  uploadedUrl?: string; // URL do BE phục vụ (/uploads/...) khi upload xong
 }
 
 interface UseImageUploaderResult {
@@ -47,7 +47,7 @@ async function uploadToBackend(file: File): Promise<string> {
 }
 
 /**
- * Manages image upload state: base64 preview immediately, MinIO URL when done.
+ * Manages image upload state: base64 preview immediately, backend URL (/uploads/...) when done.
  * Caller reads `pending` for previews + `pending.filter(done).map(uploadedUrl)` for send.
  */
 export function useImageUploader(): UseImageUploaderResult {

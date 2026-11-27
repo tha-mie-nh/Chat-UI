@@ -2,7 +2,7 @@
 //   form-data: file (image/*)
 //   giới hạn: 10 MB, chỉ nhận image/*
 
-// → uploadFile() → storage-client.ts → MinIO/S3
+// → uploadFile() → storage-client.ts → ghi file vào UPLOADS_DIR (local disk)
 // → trả { url } (public URL để FE hiển thị ảnh)
 
 
